@@ -21,9 +21,7 @@ import (
 )
 
 func main() {
-	runDynamicLabData()
-	//runVoiceToText()
-	//runContentBlock()
+	runVoiceToText()
 }
 
 func runContentBlock() {
