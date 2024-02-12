@@ -15,7 +15,7 @@ func Initialize() (err error) {
 		envExpiry          = "NMS_PROPERTY_ENGINE_CACHE_EXPIRY_SECONDS"
 		envCleanupInterval = "NMS_PROPERTY_ENGINE_CACHE_CLEANUP_SECONDS"
 
-		defaultConfigRoot      = "nms-benthos-yamls/"
+		defaultConfigRoot      = "/Users/vvijayansuki.ai/Desktop/benthos-testing/source/nms-benthos-yamls/"
 		defaultExpiry          = 1
 		defaultCleanupInterval = 1
 	)
