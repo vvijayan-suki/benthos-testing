@@ -1,0 +1,283 @@
+pipeline:
+  processors:
+    - try:
+        - resource: validate_operand
+        - resource: validate_contexts
+        - resource: populate_prereqs
+        - resource: splice_content_range
+        - resource: content_blocks_update_offsets
+        - resource: update_offsets
+        - resource: update_results
+
+    - catch:
+        - mapping: |
+            root.results = []
+            root.error = error()
+
+processor_resources:
+  # -------------------------------- Validators -------------------------------- #
+  - label: validate_operand
+    mapping: |
+      let contentS2 = if !this.exists("operand") {
+        throw("operand is required")
+      } else if (! (this.exists("operand.@type") && (this.operand."@type" == "type.googleapis.com/learningmotors.pb.composer.SectionS2")) ) {
+        throw("invalid operand type")
+      } else {
+        this.operand.contentS2
+      }
+      
+      let content = if !$contentS2.exists("content") || $contentS2.content.type() != "array" {
+        throw("invalid operand data, must be an array")
+      }
+
+  - label: validate_contexts
+    mapping: |
+      let contexts = if !this.exists("contexts") || this.contexts.length() < 2 {
+        throw("At least two context is required")
+      }
+
+      let cursor_info = this.contexts.index(0)
+      cursor_info = if (! ($cursor_info.exists("@type") && $cursor_info."@type" == "type.googleapis.com/suki.pb.s2.CursorPosition")) {
+        throw("invalid cursor_info type")
+      } else if $cursor_info.exists("cursorPositionIndex") && $cursor_info.exists("cursorPositionEndIndex") && ($cursor_info.cursorPositionIndex < 0 || $cursor_info.cursorPositionEndIndex < 0) {
+        throw("cursor positions cannot be negative")
+      } else if $cursor_info.exists("cursorPositionIndex") && $cursor_info.exists("cursorPositionEndIndex") && ($cursor_info.cursorPositionIndex > $cursor_info.cursorPositionEndIndex) {
+        throw("start cursor position cannot be greater than end cursor position")
+      }
+      
+      let section_content = this.contexts.index(1)
+      section_content = if (! ($section_content.exists("@type") && $section_content."@type" == "type.googleapis.com/SectionContent")) {
+        throw("invalid section_content type")
+      }else if !$section_content.exists("content") || $section_content.content.type() != "array" {
+        throw("invalid section_content data, must be an array")
+      }
+
+  # -------------------------------- Processors -------------------------------- #
+
+  ## Populate pre-requisites
+  - label: populate_prereqs
+    mutation: |
+      let cursor_info = this.contexts.index(0)
+      
+      root.section_content = this.operand.contentS2
+      
+      
+      root.mode = if root.section_content.content.length() > 0 {
+        if $cursor_info.cursorPositionIndex != $cursor_info.cursorPositionEndIndex && $cursor_info.cursorPositionIndex < $cursor_info.cursorPositionEndIndex {
+          # when both cursor positions are present and the start position is less than the end position
+          "range"
+        } else if $cursor_info.cursorPositionIndex == $cursor_info.cursorPositionEndIndex && $cursor_info.cursorPositionIndex + $cursor_info.cursorPositionEndIndex != 0 {
+          # when both cursor positions are present and the start position is equal to the end position and neither of them are 0
+          "inline"
+        } else if $cursor_info.cursorPositionIndex == 0 && $cursor_info.cursorPositionEndIndex == 0 {
+          # when both cursor positions are present and the start position is equal to the end position and both of them are 0
+          "prepend"
+       }
+      } else {
+          "append"
+      }
+      
+      root.section_content = this.operand.contentS2
+      root.content_blocks = this.contexts.index(1).content
+
+  ## splice the content array if range or inline editing is being done
+  - label: splice_content_range
+    switch:
+      - check: this.section_content.content.length() > 0
+        processors:
+          - mutation: |
+              # find the content index that contains the start and end cursor positions
+              
+              let cursor_info = this.contexts.index(0)
+              
+              let content_start_index = root.section_content.content.find_by(v -> $cursor_info.cursorPositionIndex >= v.startOffset &&  $cursor_info.cursorPositionIndex <= v.endOffset)
+              let content_end_index = root.section_content.content.find_by(v -> $cursor_info.cursorPositionEndIndex >= v.startOffset && $cursor_info.cursorPositionEndIndex <= v.endOffset)
+              
+              # split the content array into 3 parts - before the start cursor, between the start and end cursor (new incoming content block/blocks) and after the end cursor
+              
+              root.upto_start_cursor = root.section_content.content.slice(0, $content_start_index)
+              root.from_end_cursor = if root.mode == "prepend" {
+               # in prepend mode, we need to include the content that is being displaced
+               root.section_content.content.slice($content_end_index, root.section_content.content.length()+1)
+              } else {
+               # in non-prepend mode, we don't need to include the content that is being displaced i.e. it's replacement
+               root.section_content.content.slice($content_end_index+1, root.section_content.content.length()+1)
+              }
+              
+              root.start_content = root.section_content.content.index($content_start_index)
+              root.end_content = root.section_content.content.index($content_end_index)
+              
+              root.start_content.string = if root.mode == "range" && $cursor_info.cursorPositionIndex == 0 { 
+               # when the start cursor position is 0, we need to include the first character of the content in removal
+               # otherwise due to the nature of "slice", the first character will be excluded if we do +1
+               root.start_content.string.slice(0, $cursor_info.cursorPositionIndex - root.start_content.startOffset)
+               } else {
+               root.start_content.string.slice(0, $cursor_info.cursorPositionIndex - root.start_content.startOffset + 1)
+               }
+              
+              root.end_content.string = root.end_content.string.slice($cursor_info.cursorPositionEndIndex - root.end_content.startOffset + 1, root.end_content.string.length()+1)
+              
+              root.start_content.lengthOfString = root.start_content.string.length()
+              root.end_content.lengthOfString = root.end_content.string.length()
+              
+              root.start_content.endOffset = if $cursor_info.cursorPositionIndex == 0 {
+               # special case when start of cursor is zero, then the endOffset is set to -1 because it is used by new incoming event as base to calculate startOffset of its own.
+               # and since the new incoming event is the start content, it's startOffset is 0 and hence this is set to -1
+               -1
+              } else {
+               $cursor_info.cursorPositionIndex
+              }
+              
+              let new_content_blocks = this.contexts.index(1)
+              let last_content_block = if $new_content_blocks.exists("content") && $new_content_blocks.content.length() > 0 {
+                $new_content_blocks.content.index(-1) # reverse lookup
+              } else {
+              [
+                {
+                  id: -1,
+                  startOffset: -1,
+                  endOffset: -1,
+                }
+              ]
+              }
+              
+              # start cursor position + the endOffset of the last content block + 1 (for correct length)
+              root.end_content.startOffset = if root.mode == "range" && $cursor_info.cursorPositionIndex == 0 {
+                # +1 for length correction
+                $cursor_info.cursorPositionIndex + ($last_content_block.endOffset + 1)
+              } else {
+                ($cursor_info.cursorPositionIndex + 1) + ($last_content_block.endOffset + 1)
+              }
+              root.end_content.endOffset = root.end_content.startOffset + root.end_content.string.length() - 1
+              
+              root.end_content.id = if $cursor_info.cursorPositionIndex == 0 {
+               root.start_content.id + this.contexts.index(1).content.length()
+              } else {
+               # +1 for character correction
+               root.start_content.id + this.contexts.index(1).content.length() + 1
+              }
+              
+              root.start_content.id = if $cursor_info.cursorPositionIndex == 0 {
+               # special case when start of cursor is zero, we need to preserve the id of the new content as 0
+               # and since that new content just does root.start_content + 1, setting the id of root.start_content to -1
+                -1
+              }
+
+    ## update offsets
+  - label: content_blocks_update_offsets
+    switch:
+      - check: this.section_content.content.length() > 0
+        processors:
+          - mutation: |
+              map updateOffsets {
+               root.id = this.value.id + this.idCorrection
+               root.startOffset = this.value.startOffset + this.offsetCorrection
+               root.endOffset = this.value.endOffset + this.offsetCorrection
+               root.string = this.value.string
+               root.lengthOfString = this.value.lengthOfString
+               root.source = this.value.source
+              }
+              
+              let offsetCorrection = root.start_content.endOffset + 1
+              
+              let idCorrection = root.start_content.id + 1
+              
+              root.content_blocks = this.contexts.index(1).content.map_each(each -> { "value": each, "offsetCorrection": $offsetCorrection, "idCorrection": $idCorrection}.apply("updateOffsets"))
+
+  ## update offsets
+  - label: update_offsets
+    switch:
+      - check: this.section_content.content.length() > 0
+        processors:
+          - mutation: |
+              map updateOffsets {
+               root.id = this.value.id + this.idCorrection
+               root.startOffset = this.value.startOffset + this.offsetCorrection
+               root.endOffset = this.value.endOffset + this.offsetCorrection
+               root.string = this.value.string
+               root.lengthOfString = this.value.lengthOfString
+               root.source = this.value.source
+              }
+              
+              let cursor_info = this.contexts.index(0)
+              let new_content_blocks = this.contexts.index(1)
+              let last_content_block = if $new_content_blocks.exists("content") && $new_content_blocks.content.length() > 0 {
+                $new_content_blocks.content.index(-1) # reverse lookup
+              } else {
+              [
+                {
+                  id: -1,
+                  startOffset: -1,
+                  endOffset: -1,
+                }
+              ]
+              }
+              
+              let offsetCorrection = if root.mode == "prepend" {
+               # this is a bit tricky, we are prepending content block/blocks, so all the offsets of the existing blocks need to be updated
+               # however, the first block had startOffset = 0 so and in prepend mode both cursors are at 0
+               # so we need to add the endOffset of the last block of the new content block/blocks to all the offsets of the existing blocks
+               # +1 is done to correct character length
+               $last_content_block.endOffset + 1
+              } else if root.mode == "range" && $cursor_info.cursorPositionIndex == 0 {
+               ($last_content_block.endOffset - ($cursor_info.cursorPositionEndIndex - $cursor_info.cursorPositionIndex))
+              } else {
+                # +1 is done for character correction 
+               ($last_content_block.endOffset - ($cursor_info.cursorPositionEndIndex - $cursor_info.cursorPositionIndex)) + 1
+              }
+              
+              let idCorrection = if root.mode == "prepend" {
+               # we are prepending content block/blocks, so all the ids of the existing blocks need to be updated
+               # so we need to add the length of the new content block/blocks to all the ids of the existing blocks
+               this.contexts.index(1).content.length()
+              } else if root.mode == "range" || root.mode == "inline" {
+                # we are replacing content block/blocks, so all the ids of the existing blocks are updated
+                # as id of start content block + length of new content block/blocks + 1(new block)
+                root.start_content.id + this.contexts.index(1).content.length() + 1
+              } else {
+               # we are appending content block/blocks, so all the ids of the existing blocks are kept same
+               0 # no correction needed
+              }
+              
+              root.from_end_cursor = root.from_end_cursor.map_each(each -> { "value": each, "offsetCorrection": $offsetCorrection, "idCorrection": $idCorrection}.apply("updateOffsets"))
+
+  ## update the results
+  - label: update_results
+    mutation: |
+      let new_content = if root.mode == "range" || root.mode == "inline" {
+       [
+         if root.start_content.string.length() > 0 {
+           root.start_content
+         },
+           root.content_blocks,
+         if root.end_content.string.length() > 0 {
+           root.end_content
+         }
+       ]
+      } else {
+        [
+         root.content_blocks
+        ]
+      }
+      
+      let new_content_flat = $new_content.flatten()
+      
+      let contentArr = if root.mode == "range" || root.mode == "inline" {
+       # inline replacement
+       root.upto_start_cursor.concat($new_content_flat, root.from_end_cursor)
+      } else if root.mode == "prepend" {
+       $new_content_flat.concat(root.from_end_cursor) # there is no root.upto_start_cursor in prepend mode
+      } else {
+       root.section_content.content.concat($new_content_flat) # simple append
+      }
+      
+      # join the content array string to get the plain text
+      let string = $contentArr.map_each(each -> each.string).join("")
+      
+      root.section_s2 = this.operand
+      
+      root.section_s2.plainText = $string
+      root.section_s2.contentS2.content = $contentArr
+      root.section_s2.cursorPosition = root.content_blocks.index(-1).endOffset
+
+      root.results = [root.section_s2]

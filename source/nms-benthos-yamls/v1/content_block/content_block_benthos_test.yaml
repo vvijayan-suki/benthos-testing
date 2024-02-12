@@ -1,0 +1,919 @@
+tests:
+  - name: OperandValidation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          context:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData",
+              "text": "",
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+            }
+    output_batches:
+      - - bloblang: this.error.contains("operand is required")
+        - bloblang: this.error.contains("invalid operand type")
+        - bloblang: this.error.contains("invalid operand data, must be an array")
+
+  - name: ContextValidation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content: [ ],
+              },
+              "plainText": "",
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content: [ ],
+              },
+              "plainText": "",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/SectionContent",
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+              }
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content: [ ],
+              },
+              "plainText": "",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 0,
+                "cursorPositionEndIndex": -1,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+              }
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content: [ ],
+              },
+              "plainText": "",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 5,
+                "cursorPositionEndIndex": 2,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+              }
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content: [ ],
+              },
+              "plainText": "",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 5,
+                "cursorPositionEndIndex": 10,
+              },
+              {
+                "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              }
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content: [ ],
+              },
+              "plainText": "",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 5,
+                "cursorPositionEndIndex": 10,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+              }
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content: [ ],
+              },
+              "plainText": "",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 5,
+                "cursorPositionEndIndex": 10,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content": "some text",
+              }
+            ]
+    output_batches:
+      - - bloblang: this.error.contains("At least two context is required")
+        - bloblang: this.error.contains("invalid cursor_info type")
+        - bloblang: this.error.contains("cursor positions cannot be negative")
+        - bloblang: this.error.contains("start cursor position cannot be greater than end cursor position")
+        - bloblang: this.error.contains("invalid section_content type")
+        - bloblang: this.error.contains("invalid section_content data, must be an array")
+        - bloblang: this.error.contains("invalid section_content data, must be an array")
+
+  - name: Processing
+    target_processors: "/pipeline/processors"
+    environment: { }
+    input_batch:
+      # insertion at beginning
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content:
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 23,
+                      string: "bp: __blood_pressure__  ",
+                      lengthOfString: 24,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 1,
+                      startOffset: 24,
+                      endOffset: 40,
+                      string: "hr: __heartrate__",
+                      lengthOfString: 17,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 2,
+                      startOffset: 41,
+                      endOffset: 63,
+                      string: "bp: __blood_pressure__ ",
+                      lengthOfString: 23,
+                      source: "NVOQ_ASR",
+                    }
+                  ],
+              },
+              "plainText": "bp: __blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 0,
+                "cursorPositionEndIndex": 0,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content":
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 4,
+                      string: "this ",
+                      lengthOfString: 5,
+                    },
+                    {
+                      id: 1,
+                      startOffset: 5,
+                      endOffset: 7,
+                      string: "is ",
+                      lengthOfString: 3,
+                    },
+                    {
+                      id: 2,
+                      startOffset: 8,
+                      endOffset: 23,
+                      string: "a test sentence.",
+                      lengthOfString: 16,
+                    }
+                  ],
+              }
+            ]
+
+      # insertion at end
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content:
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 23,
+                      string: "bp: __blood_pressure__  ",
+                      lengthOfString: 24,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 1,
+                      startOffset: 24,
+                      endOffset: 40,
+                      string: "hr: __heartrate__",
+                      lengthOfString: 17,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 2,
+                      startOffset: 41,
+                      endOffset: 63,
+                      string: "bp: __blood_pressure__ ",
+                      lengthOfString: 23,
+                      source: "NVOQ_ASR",
+                    }
+                  ],
+              },
+              "plainText": "bp: __blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 63,
+                "cursorPositionEndIndex": 63,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content":
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 4,
+                      string: "this ",
+                      lengthOfString: 5,
+                    },
+                    {
+                      id: 1,
+                      startOffset: 5,
+                      endOffset: 7,
+                      string: "is ",
+                      lengthOfString: 3,
+                    },
+                    {
+                      id: 2,
+                      startOffset: 8,
+                      endOffset: 23,
+                      string: "a test sentence.",
+                      lengthOfString: 16,
+                    }
+                  ],
+              }
+            ]
+
+      # insertion in middle
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              totalStringLength: 64,
+              contentS2: {
+                content:
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 23,
+                      string: "bp: __blood_pressure__  ",
+                      lengthOfString: 24,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 1,
+                      startOffset: 24,
+                      endOffset: 40,
+                      string: "hr: __heartrate__",
+                      lengthOfString: 17,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 2,
+                      startOffset: 41,
+                      endOffset: 63,
+                      string: "bp: __blood_pressure__ ",
+                      lengthOfString: 23,
+                      source: "NVOQ_ASR",
+                    }
+                  ],
+              },
+              "plainText": "bp: __blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 3,
+                "cursorPositionEndIndex": 3,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content":
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 4,
+                      string: "this ",
+                      lengthOfString: 5,
+                    },
+                    {
+                      id: 1,
+                      startOffset: 5,
+                      endOffset: 7,
+                      string: "is ",
+                      lengthOfString: 3,
+                    },
+                    {
+                      id: 2,
+                      startOffset: 8,
+                      endOffset: 23,
+                      string: "a test sentence.",
+                      lengthOfString: 16,
+                    }
+                  ],
+              }
+            ]
+
+      # insertion with range and start cursor position = 0
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              totalStringLength: 64,
+              contentS2: {
+                content:
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 23,
+                      string: "bp: __blood_pressure__  ",
+                      lengthOfString: 24,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 1,
+                      startOffset: 24,
+                      endOffset: 40,
+                      string: "hr: __heartrate__",
+                      lengthOfString: 17,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 2,
+                      startOffset: 41,
+                      endOffset: 63,
+                      string: "bp: __blood_pressure__ ",
+                      lengthOfString: 23,
+                      source: "NVOQ_ASR",
+                    }
+                  ],
+              },
+              "plainText": "bp: __blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 0,
+                "cursorPositionEndIndex": 3,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content":
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 4,
+                      string: "this ",
+                      lengthOfString: 5,
+                    },
+                    {
+                      id: 1,
+                      startOffset: 5,
+                      endOffset: 7,
+                      string: "is ",
+                      lengthOfString: 3,
+                    },
+                    {
+                      id: 2,
+                      startOffset: 8,
+                      endOffset: 23,
+                      string: "a test sentence.",
+                      lengthOfString: 16,
+                    }
+                  ],
+              }
+            ]
+
+      # insertion with range and start cursor position != 0
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              totalStringLength: 64,
+              contentS2: {
+                content:
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 23,
+                      string: "bp: __blood_pressure__  ",
+                      lengthOfString: 24,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 1,
+                      startOffset: 24,
+                      endOffset: 40,
+                      string: "hr: __heartrate__",
+                      lengthOfString: 17,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 2,
+                      startOffset: 41,
+                      endOffset: 63,
+                      string: "bp: __blood_pressure__ ",
+                      lengthOfString: 23,
+                      source: "NVOQ_ASR",
+                    }
+                  ],
+              },
+              "plainText": "bp: __blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 1,
+                "cursorPositionEndIndex": 3,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content":
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 4,
+                      string: "this ",
+                      lengthOfString: 5,
+                    },
+                    {
+                      id: 1,
+                      startOffset: 5,
+                      endOffset: 7,
+                      string: "is ",
+                      lengthOfString: 3,
+                    },
+                    {
+                      id: 2,
+                      startOffset: 8,
+                      endOffset: 23,
+                      string: "a test sentence.",
+                      lengthOfString: 16,
+                    }
+                  ],
+              }
+            ]
+
+      # insertion with sectionS2 containing no content
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              contentS2: {
+                content: [],
+              },
+              "plainText": "",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.s2.CursorPosition",
+                "cursorPositionIndex": 0,
+                "cursorPositionEndIndex": 0,
+              },
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content":
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 4,
+                      string: "this ",
+                      lengthOfString: 5,
+                    },
+                    {
+                      id: 1,
+                      startOffset: 5,
+                      endOffset: 7,
+                      string: "is ",
+                      lengthOfString: 3,
+                    },
+                    {
+                      id: 2,
+                      startOffset: 8,
+                      endOffset: 23,
+                      string: "a test sentence.",
+                      lengthOfString: 16,
+                    }
+                  ],
+              }
+            ]
+    output_batches:
+       - - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                  contentS2: {
+                    content:
+                      [
+                        {
+                          id: 0,
+                          startOffset: 0,
+                          endOffset: 4,
+                          string: "this ",
+                          lengthOfString: 5,
+                        },
+                        {
+                          id: 1,
+                          startOffset: 5,
+                          endOffset: 7,
+                          string: "is ",
+                          lengthOfString: 3,
+                        },
+                        {
+                          id: 2,
+                          startOffset: 8,
+                          endOffset: 23,
+                          string: "a test sentence.",
+                          lengthOfString: 16,
+                        },
+                        {
+                          id: 3,
+                          startOffset: 24,
+                          endOffset: 47,
+                          string: "bp: __blood_pressure__  ",
+                          lengthOfString: 24,
+                          source: "NVOQ_ASR",
+                        },
+                        {
+                          id: 4,
+                          startOffset: 48,
+                          endOffset: 64,
+                          string: "hr: __heartrate__",
+                          lengthOfString: 17,
+                          source: "NVOQ_ASR",
+                        },
+                        {
+                          id: 5,
+                          startOffset: 65,
+                          endOffset: 87,
+                          string: "bp: __blood_pressure__ ",
+                          lengthOfString: 23,
+                          source: "NVOQ_ASR",
+                        }
+                      ]
+                  },
+                  plainText: "this is a test sentence.bp: __blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+                },
+              ]
+         - json_contains:
+             results:
+               [
+                 {
+                   "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                   contentS2: {
+                     content:
+                       [
+                         {
+                           id: 0,
+                           startOffset: 0,
+                           endOffset: 23,
+                           string: "bp: __blood_pressure__  ",
+                           lengthOfString: 24,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 1,
+                           startOffset: 24,
+                           endOffset: 40,
+                           string: "hr: __heartrate__",
+                           lengthOfString: 17,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 2,
+                           startOffset: 41,
+                           endOffset: 63,
+                           string: "bp: __blood_pressure__ ",
+                           lengthOfString: 23,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 3,
+                           startOffset: 64,
+                           endOffset: 68,
+                           string: "this ",
+                           lengthOfString: 5,
+                         },
+                         {
+                           id: 4,
+                           startOffset: 69,
+                           endOffset: 71,
+                           string: "is ",
+                           lengthOfString: 3,
+                         },
+                         {
+                           id: 5,
+                           startOffset: 72,
+                           endOffset: 87,
+                           string: "a test sentence.",
+                           lengthOfString: 16,
+                         }
+                       ],
+                   },
+                   "plainText": "bp: __blood_pressure__  hr: __heartrate__bp: __blood_pressure__ this is a test sentence.",
+                 }
+               ]
+         - json_contains:
+             results:
+               [
+                 {
+                   "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                   contentS2: {
+                     content:
+                       [
+                         {
+                           id: 0,
+                           startOffset: 0,
+                           endOffset: 3,
+                           string: "bp: ",
+                           lengthOfString: 4,
+                           source: "NVOQ_ASR"
+                         },
+                         {
+                           id: 1,
+                           startOffset: 4,
+                           endOffset: 8,
+                           string: "this ",
+                           lengthOfString: 5,
+                         },
+                         {
+                           id: 2,
+                           startOffset: 9,
+                           endOffset: 11,
+                           string: "is ",
+                           lengthOfString: 3,
+                         },
+                         {
+                           id: 3,
+                           startOffset: 12,
+                           endOffset: 27,
+                           string: "a test sentence.",
+                           lengthOfString: 16,
+                         },
+                         {
+                           id: 4,
+                           startOffset: 28,
+                           endOffset: 47,
+                           string: "__blood_pressure__  ",
+                           lengthOfString: 20,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                            id: 5,
+                            startOffset: 48,
+                            endOffset: 64,
+                            string: "hr: __heartrate__",
+                            lengthOfString: 17,
+                            source: "NVOQ_ASR",
+                             },
+                             {
+                            id: 6,
+                            startOffset: 65,
+                            endOffset: 87,
+                            string: "bp: __blood_pressure__ ",
+                            lengthOfString: 23,
+                            source: "NVOQ_ASR",
+                         }
+                       ]
+                   },
+                   plainText: "bp: this is a test sentence.__blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+                 },
+               ]
+         - json_contains:
+             results:
+               [
+                 {
+                   "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                   contentS2: {
+                     content:
+                       [
+                         {
+                           id: 0,
+                           startOffset: 0,
+                           endOffset: 4,
+                           string: "this ",
+                           lengthOfString: 5,
+                         },
+                         {
+                           id: 1,
+                           startOffset: 5,
+                           endOffset: 7,
+                           string: "is ",
+                           lengthOfString: 3,
+                         },
+                         {
+                           id: 2,
+                           startOffset: 8,
+                           endOffset: 23,
+                           string: "a test sentence.",
+                           lengthOfString: 16,
+                         },
+                         {
+                           id: 3,
+                           startOffset: 24,
+                           endOffset: 43,
+                           string: "__blood_pressure__  ",
+                           lengthOfString: 20,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 4,
+                           startOffset: 44,
+                           endOffset: 60,
+                           string: "hr: __heartrate__",
+                           lengthOfString: 17,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 5,
+                           startOffset: 61,
+                           endOffset: 83,
+                           string: "bp: __blood_pressure__ ",
+                           lengthOfString: 23,
+                           source: "NVOQ_ASR",
+                         }
+                       ]
+                   },
+                   plainText: "this is a test sentence.__blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+                 },
+               ]
+         - json_contains:
+             results:
+               [
+                 {
+                   "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                   contentS2: {
+                     content:
+                       [
+                         {
+                           id: 0,
+                           startOffset: 0,
+                           endOffset: 1,
+                           string: "bp",
+                           lengthOfString: 2,
+                         },
+                         {
+                           id: 1,
+                           startOffset: 2,
+                           endOffset: 6,
+                           string: "this ",
+                           lengthOfString: 5,
+                         },
+                         {
+                           id: 2,
+                           startOffset: 7,
+                           endOffset: 9,
+                           string: "is ",
+                           lengthOfString: 3,
+                         },
+                         {
+                           id: 3,
+                           startOffset: 10,
+                           endOffset: 25,
+                           string: "a test sentence.",
+                           lengthOfString: 16,
+                         },
+                         {
+                           id: 4,
+                           startOffset: 26,
+                           endOffset: 45,
+                           string: "__blood_pressure__  ",
+                           lengthOfString: 20,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 5,
+                           startOffset: 46,
+                           endOffset: 62,
+                           string: "hr: __heartrate__",
+                           lengthOfString: 17,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 6,
+                           startOffset: 63,
+                           endOffset: 85,
+                           string: "bp: __blood_pressure__ ",
+                           lengthOfString: 23,
+                           source: "NVOQ_ASR",
+                         }
+                       ]
+                   },
+                   plainText: "bpthis is a test sentence.__blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+                 },
+               ]
+         - json_contains:
+             results:
+               [
+                 {
+                   "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                   contentS2: {
+                     content:
+                       [
+                         {
+                           id: 0,
+                           startOffset: 0,
+                           endOffset: 4,
+                           string: "this ",
+                           lengthOfString: 5,
+                         },
+                         {
+                           id: 1,
+                           startOffset: 5,
+                           endOffset: 7,
+                           string: "is ",
+                           lengthOfString: 3,
+                         },
+                         {
+                           id: 2,
+                           startOffset: 8,
+                           endOffset: 23,
+                           string: "a test sentence.",
+                           lengthOfString: 16,
+                         }
+                       ]
+                   },
+                   plainText: "this is a test sentence.",
+                 },
+               ]

@@ -1,0 +1,453 @@
+tests:
+  - name: Validation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            textSource: "ASR_GOOGLE_MEDICAL"
+            text: "Hello"
+      - json_content:
+          operand: { "@type": "random-type", asr: "SUKI", text: "Hello" }
+      - json_content:
+          operand:
+            { "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent" }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              "text": "",
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              "text": "",
+              "textSource": "ASR_GOOGLE_MEDICAL",
+            }
+    output_batches:
+      - - bloblang: this.error.contains("invalid operand type")
+        - bloblang: this.error.contains("invalid operand type")
+        - bloblang: this.error.contains("operand.text must be present")
+        - bloblang: this.error.contains("operand.textSource must be present")
+        - bloblang: this.error.contains("operand.isFinal must be present")
+
+  - name: ContextValidation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: false,
+            }
+          contexts:
+            - { "@type": "type.googleapis.com/SectionContent" }
+            - { "@type": "type.googleapis.com/SectionContent" }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: false,
+            }
+          contexts:
+            - { "@type": "type.googleapis.com/incorrect-type" }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: false,
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: false,
+            }
+          contexts:
+            - { "@type": "type.googleapis.com/SectionContent", "content": "hello" }
+
+    output_batches:
+      - - bloblang: this.error.contains("At most one context is allowed")
+        - bloblang: this.error.contains("invalid context type")
+        - bloblang: this.error.contains("At least one context is required")
+        - bloblang: this.error.contains("invalid context content data, must be an array")
+
+  - name: Procesing Without Context
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              isFinal: false,
+              textSource: "ASR_GOOGLE_MEDICAL",
+            }
+          contexts:
+            [{ "@type": "type.googleapis.com/SectionContent", "content": [] }]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              isFinal: true,
+              textSource: "ASR_GOOGLE_MEDICAL",
+            }
+          contexts:
+            [{ "@type": "type.googleapis.com/SectionContent", "content": [] }]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              isFinal: true,
+              textSource: "ASR_GOOGLE_MEDICAL",
+            }
+          contexts:
+            [{ "@type": "type.googleapis.com/SectionContent", "content": [] }]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              isFinal: true,
+              textSource: "ASR_GOOGLE_MEDICAL",
+            }
+          contexts:
+            [{ "@type": "type.googleapis.com/SectionContent", "content": [] }]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              isFinal: true,
+              textSource: "ASR_GOOGLE_MEDICAL",
+            }
+          contexts:
+            [{ "@type": "type.googleapis.com/SectionContent", "content": [] }]
+    output_batches:
+      - - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/SectionContent",
+                  "content":
+                    [
+                      {
+                        "id": 0,
+                        "startOffset": 0,
+                        "endOffset": 4,
+                        "length_of_string": 5,
+                        "isItalic": 1,
+                        "source": "INTERMEDIATE_TEXT",
+                        "string": "Hello",
+                      },
+                    ],
+                },
+                {
+                  "@type": "type.googleapis.com/google.protobuf.Int32Value",
+                  "value": 5,
+                },
+              ]
+        - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/SectionContent",
+                  "content":
+                    [
+                      {
+                        "id": 0,
+                        "startOffset": 0,
+                        "endOffset": 4,
+                        "length_of_string": 5,
+                        "isItalic": 0,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": "Hello",
+                      },
+                    ],
+                },
+                {
+                  "@type": "type.googleapis.com/google.protobuf.Int32Value",
+                  "value": 5,
+                },
+              ]
+        - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/SectionContent",
+                  "content":
+                    [
+                      {
+                        "id": 0,
+                        "startOffset": 0,
+                        "endOffset": 4,
+                        "length_of_string": 5,
+                        "isItalic": 0,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": "Hello",
+                      },
+                    ],
+                },
+                {
+                  "@type": "type.googleapis.com/google.protobuf.Int32Value",
+                  "value": 5,
+                },
+              ]
+        - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/SectionContent",
+                  "content":
+                    [
+                      {
+                        "id": 0,
+                        "startOffset": 0,
+                        "endOffset": 4,
+                        "length_of_string": 5,
+                        "isItalic": 0,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": "Hello",
+                      },
+                    ],
+                },
+                {
+                  "@type": "type.googleapis.com/google.protobuf.Int32Value",
+                  "value": 5,
+                },
+              ]
+        - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/SectionContent",
+                  "content":
+                    [
+                      {
+                        "id": 0,
+                        "startOffset": 0,
+                        "endOffset": 4,
+                        "length_of_string": 5,
+                        "isItalic": 0,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": "Hello",
+                      },
+                    ],
+                },
+                {
+                  "@type": "type.googleapis.com/google.protobuf.Int32Value",
+                  "value": 5,
+                },
+              ]
+
+  - name: Procesing With Context
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              asr: "SUKI",
+              isFinal: false,
+              textSource: "ASR_GOOGLE_MEDICAL",
+              cursorInfo:
+                { "cursorPositionIndex": 0, "cursorPositionEndIndex": 0 },
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content":
+                  [
+                    {
+                      "id": 0,
+                      "startOffset": 0,
+                      "endOffset": 13,
+                      "string": "Hello there!!!",
+                      "isItalic": 0,
+                      "lengthOfString": 14,
+                      "source": "ASR_GOOGLE_MEDICAL",
+                    },
+                  ],
+              },
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              asr: "SUKI",
+              isFinal: true,
+              textSource: "ASR_GOOGLE_MEDICAL",
+              cursorInfo:
+                { "cursorPositionIndex": 0, "cursorPositionEndIndex": 0 },
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content":
+                  [
+                    {
+                      "id": 0,
+                      "startOffset": 0,
+                      "endOffset": 13,
+                      "string": "Hello there!!!",
+                      "isItalic": 0,
+                      "lengthOfString": 14,
+                      "source": "ASR_GOOGLE_MEDICAL",
+                    },
+                  ],
+              },
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              asr: "SUKI",
+              isFinal: true,
+              textSource: "ASR_GOOGLE_MEDICAL",
+              cursorInfo:
+                { "cursorPositionIndex": 4, "cursorPositionEndIndex": 4 },
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/SectionContent",
+                "content":
+                  [
+                    {
+                      "id": 0,
+                      "startOffset": 0,
+                      "endOffset": 13,
+                      "string": "Hello there!!!",
+                      "isItalic": 0,
+                      "lengthOfString": 14,
+                      "source": "ASR_GOOGLE_MEDICAL",
+                      "recommendationId": "recommendation_id",
+                    },
+                  ],
+              },
+            ]
+    output_batches:
+      - - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/SectionContent",
+                  "content":
+                    [
+                      {
+                        "id": 0,
+                        "startOffset": 0,
+                        "endOffset": 4,
+                        "length_of_string": 5,
+                        "isItalic": 1,
+                        "source": "INTERMEDIATE_TEXT",
+                        "string": "Hello",
+                      },
+                      {
+                        "endOffset": 18,
+                        "id": 1,
+                        "lengthOfString": 14,
+                        "startOffset": 5,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": "Hello there!!!",
+                      },
+                    ],
+                },
+                {
+                  "@type": "type.googleapis.com/google.protobuf.Int32Value",
+                  "value": 5,
+                },
+              ]
+        - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/SectionContent",
+                  "content":
+                    [
+                      {
+                        "id": 0,
+                        "startOffset": 0,
+                        "endOffset": 4,
+                        "length_of_string": 5,
+                        "isItalic": 0,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": "Hello",
+                      },
+                      {
+                        "endOffset": 18,
+                        "id": 1,
+                        "lengthOfString": 14,
+                        "startOffset": 5,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": "Hello there!!!",
+                      },
+                    ],
+                },
+                {
+                  "@type": "type.googleapis.com/google.protobuf.Int32Value",
+                  "value": 5,
+                },
+              ]
+        - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/SectionContent",
+                  "content":
+                    [
+                      {
+                        "id": 0,
+                        "startOffset": 0,
+                        "endOffset": 4,
+                        "lengthOfString": 5,
+                        "isItalic": 0,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": "Hello",
+                        "recommendationId": "recommendation_id",
+                      },
+                      {
+                        "id": 1,
+                        "startOffset": 5,
+                        "endOffset": 9,
+                        "length_of_string": 5,
+                        "isItalic": 0,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": "Hello",
+                      },
+                      {
+                        "endOffset": 18,
+                        "id": 2,
+                        "lengthOfString": 9,
+                        "isItalic": 0,
+                        "startOffset": 10,
+                        "source": "ASR_GOOGLE_MEDICAL",
+                        "string": " there!!!",
+                        "recommendationId": "recommendation_id",
+                      },
+                    ],
+                },
+                {
+                  "@type": "type.googleapis.com/google.protobuf.Int32Value",
+                  "value": 10,
+                },
+              ]

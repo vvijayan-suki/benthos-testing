@@ -1,0 +1,214 @@
+tests:
+  - name: Validation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            textSource: "ASR_GOOGLE_MEDICAL"
+            text: "Hello"
+      - json_content:
+          operand: { "@type": "random-type", asr: "SUKI", text: "Hello" }
+      - json_content:
+          operand:
+            { "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent" }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              "text": "",
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              "text": "",
+              "textSource": "ASR_GOOGLE_MEDICAL",
+            }
+    output_batches:
+      - - bloblang: this.error.contains("invalid operand type")
+        - bloblang: this.error.contains("invalid operand type")
+        - bloblang: this.error.contains("operand.text must be present")
+        - bloblang: this.error.contains("operand.textSource must be present")
+        - bloblang: this.error.contains("operand.isFinal must be present")
+
+  - name: ContextValidation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: false,
+            }
+          contexts:
+            - { "@type": "type.googleapis.com/SectionContent" }
+
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: false,
+            }
+          contexts:
+            - { "@type": "type.googleapis.com/incorrect-type" }
+            - { "@type": "type.googleapis.com/incorrect-type" }
+
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "Hello",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: false,
+            }
+          contexts:
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2" }
+            - { "@type": "type.googleapis.com/incorrect-type" }
+
+    output_batches:
+      - - bloblang: this.error.contains("At least two contexts is required")
+        - bloblang: this.error.contains("invalid context type")
+        - bloblang: this.error.contains("invalid contexts type")
+
+  - name: PreReqCheck
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: " asthma ",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: true,
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                name: "",
+                cursorPositionName: 6,
+                id: 1,
+              },
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry",
+                section: {
+                  name: "Asthma",
+                  subsectionIndex: 2,
+                  id: 2,
+                },
+              },
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry",
+                section: {
+                  name: "",
+                  subsectionIndex: 1,
+                  id: 1,
+                  cursorPositionName: 6,
+                },
+              },
+            ]
+
+    output_batches:
+      - - bloblang: this.error.contains("Duplicate problem")
+
+
+  - name: AddDiagnosisName
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "asthma",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: true,
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                name: "",
+                cursorPositionName: 0,
+                id: 1,
+              },
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry",
+                section: {
+                  name: "Diabetes",
+                  subsectionIndex: 2,
+                  id: 2,
+                },
+              },
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry",
+                section: {
+                  name: "",
+                  subsectionIndex: 1,
+                  id: 1,
+                  cursorPositionName: 0,
+                },
+              },
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+              text: "acute",
+              textSource: "ASR_GOOGLE_MEDICAL",
+              isFinal: true,
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                name: "Asthma",
+                cursorPositionName: 6,
+                id: 1,
+              },
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry",
+                section: {
+                  name: "Diabetes",
+                    subsectionIndex: 1,
+                  id: 2,
+                },
+              },
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry",
+                section: {
+                  name: "Asthma",
+                  subsectionIndex: 1,
+                  id: 1,
+                },
+              },
+            ]
+
+    output_batches:
+      - - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                  "cursorPositionName": 5,
+                  "name": "Asthma",
+                  "opsStatusFlag": "NEEDS_OPS_PROCESSING"
+                },
+              ]
+        - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                  "cursorPositionName": 11,
+                  "name": "Asthma acute",
+                  "opsStatusFlag": "NEEDS_OPS_PROCESSING"
+                },
+              ]

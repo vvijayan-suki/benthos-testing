@@ -1,0 +1,6 @@
+timeout: 900s
+steps:
+- name: 'jeffail/benthos'
+  args:
+    - 'test'
+    - 'v1/...'

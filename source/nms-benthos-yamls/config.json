@@ -1,0 +1,30 @@
+{
+    "v1:entity_type:intermediate_text": {
+        "yaml_path": "v1//voiceToText/voiceToText.yaml",
+        "processor_resource_dirs": ["resources"]
+    },
+    "v1:entity_type:final_text": {
+        "yaml_path": "v1/voiceToText/voiceToText.yaml",
+        "processor_resource_dirs": ["resources"]
+    },
+    "v1:entity_type:diagnosis": {
+        "yaml_path": "v1/diagnosis/diagnosis.yaml",
+        "processor_resource_dirs": ["resources"]
+    },
+    "v1:entity_type:diagnosis_title_text": {
+        "yaml_path": "v1/diagnosis_title/diagnosis_title.yaml",
+        "processor_resource_dirs": ["resources"]
+    },
+    "v1:lab_result_type:lab_result_value": {
+        "yaml_path": "v1/dynamic_data/dynamic_data.yaml",
+        "processor_resource_dirs": ["resources"]
+    },
+    "v1:sanitize_type:sanitize_section": {
+        "yaml_path": "v1/sanitize_section/sanitize_section.yaml",
+        "processor_resource_dirs": ["resources"]
+    },
+    "v1:entity_type:content_block": {
+        "yaml_path": "v1/content_block/content_block.yaml",
+        "processor_resource_dirs": ["resources"]
+    }
+}

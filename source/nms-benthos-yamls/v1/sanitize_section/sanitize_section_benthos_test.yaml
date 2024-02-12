@@ -1,0 +1,156 @@
+tests:
+  - name: OperandValidation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand: {"entries": [{"@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entries"}]}
+      - json_content:
+          operand: {"@type": "random-type", "entries": [{"@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry"}]}
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entries", 
+              "entries": []
+            }
+    output_batches:
+      - - bloblang: this.error.contains("invalid operand")
+        - bloblang: this.error.contains("invalid operand")
+        - bloblang: this.error.contains("At least one pbc subsection to be added is required")
+
+  - name: ContextValidation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand: 
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entries", 
+              "entries": [{"section": {"id": "new id", "name": "new problem"}}]
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entries", 
+              "entries": [{"section": {"id": "new id", "name": "new problem"}}]
+            }
+          contexts:
+            [
+              { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry" },
+              { "@type": "type.googleapis.com/google.protobuf.StringValue" }
+            ]
+    output_batches:
+      - - bloblang: this.error.contains("At least one context is required")
+        - bloblang: this.error.contains("Invalid type for composition section entry")
+
+  - name: PrereqChecks
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entries", 
+              "entries": [{"section": {"id": "new id", "name": "new problem"}}]
+            }
+          contexts:
+            [
+              { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry" },
+              { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry" }
+            ]
+    output_batches:
+      - - bloblang: this.error.contains("At least one pbcSection is required")
+
+  - name: CreateDiagnosis
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            { 
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entries", 
+              "entries": [
+                  {
+                    "section": { 
+                      "name": "Cold", 
+                      "id": "999", 
+                      "subsectionIndex": 1, 
+                      "sectionIndex": 0, 
+                      "contentS2": {"numberOfStrings": 4, "totalStringLength": 5, "totalString": "hello"}, 
+                      "opsStatusFlag": "NO_OPS_PROCESSING_REQUIRED",
+                      "diagnosisEntry": {"icdCode": "ABC123"},
+                      "plainText": "hello",
+                      "status": "CREATED",
+                    }
+                  },
+                  {
+                    "section": {
+                      "name": "Cough",
+                      "id": "998",
+                      "subsectionIndex": 2,
+                      "sectionIndex": 0,
+                      "contentS2": {"numberOfStrings": 4, "totalStringLength": 11, "totalString": "hello world"},
+                      "opsStatusFlag": "NO_OPS_PROCESSING_REQUIRED",
+                      "diagnosisEntry": {"icdCode": "XYZ456"},
+                      "plainText": "hello world",
+                      "status": "CREATED",
+                    }
+                  },
+              ],
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry",
+                "section": {
+                  "subsectionIndex": 0,
+                  "sectionIndex": 15,  
+                  "pbcSectionFlag": true
+                } 
+              }, 
+              {
+                "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry",
+                "section": {
+                  "subsectionIndex": 1,
+                  "sectionIndex": 8,
+                  "pbcSectionFlag": false
+                }
+              },
+            ]
+    output_batches:
+      - - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                  "cursorPosition": 5,
+                  "cursorPositionName": 4,
+                  "name": "Cold",
+                  "id": "999",
+                  "pbcSectionFlag": false,
+                  "sectionIndex": 15,
+                  "subsectionIndex": 2,
+                  "editLocation": 0,
+                  "opsStatusFlag": "NO_OPS_PROCESSING_REQUIRED",
+                  "contentS2": {"numberOfStrings": 4, "totalStringLength": 5, "totalString": "hello"},
+                  "diagnosisEntry": {"icdCode": "ABC123"},
+                  "plainText": "hello",
+                  "status": "CREATED",
+                },
+                {
+                  "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                  "cursorPosition": 11,
+                  "cursorPositionName": 5,
+                  "name": "Cough",
+                  "id": "998",
+                  "pbcSectionFlag": false,
+                  "sectionIndex": 15,
+                  "subsectionIndex": 3,
+                  "editLocation": 0,
+                  "opsStatusFlag": "NO_OPS_PROCESSING_REQUIRED",
+                  "contentS2": {"numberOfStrings": 4, "totalStringLength": 11, "totalString": "hello world"},
+                  "diagnosisEntry": {"icdCode": "XYZ456"},
+                  "plainText": "hello world",
+                  "status": "CREATED",
+                },
+              ]

@@ -1,0 +1,283 @@
+pipeline:
+  processors:
+    - try:
+        - resource: validate_operand
+        - resource: validate_contexts
+        - resource: populate_prereqs
+        - resource: splice_content_range
+        - resource: create_content
+        - resource: update_offsets
+        - resource: update_results
+    - catch:
+        - mapping: |
+            root.results = []
+            root.error = error()
+
+processor_resources:
+  # -------------------------------- Validators -------------------------------- #
+  - label: validate_operand
+    mapping: |
+      if (! (this.exists("operand.@type") && (this.operand."@type" == "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent")) ) {
+        throw("invalid operand type")
+      } 
+      else if (! (this.exists("operand.text")) ) {
+        throw("operand.text must be present")
+      }
+      else if (! (this.exists("operand.textSource")) ) {
+        throw("operand.textSource must be present")
+      } 
+      else if (! (this.exists("operand.isFinal")) ) {
+        throw("operand.isFinal must be present")
+      } else if this.exists("operand.cursorInfo") && this.exists("operand.cursorInfo.cursorPositionIndex") && this.exists("operand.cursorInfo.cursorPositionEndIndex") && (this.operand.cursorInfo.cursorPositionIndex < 0 || this.operand.cursorInfo.cursorPositionEndIndex < 0) {
+        throw("cursor positions cannot be negative")
+      } else if this.exists("operand.cursorInfo") && this.exists("operand.cursorInfo.cursorPositionIndex") && this.exists("operand.cursorInfo.cursorPositionEndIndex") && (this.operand.cursorInfo.cursorPositionIndex > this.operand.cursorInfo.cursorPositionEndIndex) {
+        throw("start cursor position cannot be greater than end cursor position")
+      }
+
+  - label: validate_contexts
+    mapping: |
+      let contexts = if !this.exists("contexts") || this.contexts.length() == 0 {
+        throw("At least one context is required")
+      }
+
+      let section_content = if (this.contexts.length() == 1) {
+        this.contexts.index(0)
+      } else {
+        throw("At most one context is allowed")
+      }
+
+      section_content = if (! ($section_content.exists("@type") && $section_content."@type" == "type.googleapis.com/SectionContent")) {
+        throw("invalid context type")
+      }
+
+      section_content = if $section_content.exists("content") && $section_content.content.type() != "array" {
+        throw("invalid context content data, must be an array")
+      }
+
+  # -------------------------------- Processors -------------------------------- #
+
+  ## Populate pre-requisites
+  - label: populate_prereqs
+    mutation: |
+      root.prev_final = if this.exists("contexts") && this.contexts.index(0).exists("content") && this.contexts.index(0).content.length() >= 1 {
+          this.contexts.index(0).content.filter(i -> i.source != "INTERMEDIATE_TEXT").index(this.contexts.index(0).content.length() - 1)
+      } else {
+        { "id": -1, "endOffset": -1}
+      }
+
+      root.mode = if this.operand.cursorInfo != null {
+       if this.operand.cursorInfo.cursorPositionIndex != this.operand.cursorInfo.cursorPositionEndIndex && this.operand.cursorInfo.cursorPositionIndex < this.operand.cursorInfo.cursorPositionEndIndex {
+          # when both cursor positions are present and the start position is less than the end position
+          "range"
+       } else if this.operand.cursorInfo.cursorPositionIndex == this.operand.cursorInfo.cursorPositionEndIndex && this.operand.cursorInfo.cursorPositionIndex + this.operand.cursorInfo.cursorPositionEndIndex != 0 {
+          # when both cursor positions are present and the start position is equal to the end position and neither of them are 0
+          "inline"
+       } else if this.operand.cursorInfo.cursorPositionIndex == 0 && this.operand.cursorInfo.cursorPositionEndIndex == 0 {
+          # when both cursor positions are present and the start position is equal to the end position and both of them are 0
+          "prepend"
+       } else {
+          "append"
+       }
+      } else {
+          # if cursorInfo is not present, then we are appending content
+          "append"
+      }
+              
+      root.section_content = if this.exists("contexts") && this.contexts.length() == 1 {
+          this.contexts.index(0)
+      } else {
+          {
+            "@type": "type.googleapis.com/SectionContent",
+            "content": []
+          }
+      }
+
+  ## splice the content array if range or inline editing is being done
+  - label: splice_content_range
+    switch:
+      - check: this.operand.cursorInfo != null
+        processors:
+          - mutation: |
+              # find the content index that contains the start and end cursor positions
+
+              let content_start_index = root.section_content.content.find_by(v -> this.operand.cursorInfo.cursorPositionIndex >= v.startOffset && this.operand.cursorInfo.cursorPositionIndex <= v.endOffset)
+              let content_end_index = root.section_content.content.find_by(v -> this.operand.cursorInfo.cursorPositionEndIndex >= v.startOffset && this.operand.cursorInfo.cursorPositionEndIndex <= v.endOffset)
+
+              # split the content array into 3 parts - before the start cursor, between the start and end cursor (new incoming event) and after the end cursor
+
+              root.upto_start_cursor = root.section_content.content.slice(0, $content_start_index)
+              root.from_end_cursor = if root.mode == "prepend" {
+               # in prepend mode, we need to include the content that is being displaced
+               root.section_content.content.slice($content_end_index, root.section_content.content.length()+1)
+              } else {
+               # in non-prepend mode, we don't need to include the content that is being displaced i.e. it's replacement
+               root.section_content.content.slice($content_end_index+1, root.section_content.content.length()+1)
+              }
+
+              root.start_content = root.section_content.content.index($content_start_index)
+              root.end_content = root.section_content.content.index($content_end_index)
+
+              root.start_content.string = if root.mode == "range" && this.operand.cursorInfo.cursorPositionIndex == 0 { 
+               # when the start cursor position is 0, we need to include the first character of the content in removal
+               # otherwise due to the nature of "slice", the first character will be excluded if we do +1
+               root.start_content.string.slice(0, this.operand.cursorInfo.cursorPositionIndex - root.start_content.startOffset)
+               } else {
+               root.start_content.string.slice(0, this.operand.cursorInfo.cursorPositionIndex - root.start_content.startOffset + 1)
+               }
+               
+              root.end_content.string = root.end_content.string.slice(this.operand.cursorInfo.cursorPositionEndIndex - root.end_content.startOffset + 1, root.end_content.string.length()+1)
+
+              root.start_content.lengthOfString = root.start_content.string.length()
+              root.end_content.lengthOfString = root.end_content.string.length()
+
+              root.start_content.endOffset = if this.operand.cursorInfo.cursorPositionIndex == 0 {
+               # special case when start of cursor is zero, then the endOffset is set to -1 because it is used by new incoming event as base to calculate startOffset of its own.
+               # and since the new incoming event is the start content, it's startOffset is 0 and hence this is set to -1
+               -1
+              } else {
+               this.operand.cursorInfo.cursorPositionIndex
+              }
+
+              root.end_content.startOffset = this.operand.cursorInfo.cursorPositionIndex + this.operand.text.length() + 1
+              root.end_content.endOffset = root.end_content.startOffset + root.end_content.string.length() - 1
+
+              root.end_content.id = if this.operand.cursorInfo.cursorPositionIndex == 0 {
+               root.start_content.id + 1 # new block replaces existing zeroth block so adding only 1
+              } else {
+               root.start_content.id + 2 # new block doesn't replace existing zeroth block so adding 2
+              }
+
+              root.start_content.id = if this.operand.cursorInfo.cursorPositionIndex == 0 {
+               # special case when start of cursor is zero, we need to preserve the id of the new content as 0
+               # and since that new content just does root.start_content + 1, setting the id of root.start_content to -1
+                -1
+              }
+
+  ## create the new content block
+  ## if content_start and content_end are the same, then we are appending content at the cursor position
+  ## if content_start and content_end are different, then we are replacing content between the two positions and this may contain multiple content blocks
+  ## so we need to split the content into two parts and insert the new content in between
+
+  - label: create_content
+    mutation: |
+      root.cursor_position = if root.mode == "range" || root.mode == "inline" {
+        root.start_content.endOffset + this.operand.text.length() + 1
+      } else if root.mode == "prepend" {
+        this.operand.text.length()
+      } else {
+        root.prev_final.endOffset + this.operand.text.length() + 1
+      }
+      
+      root.new_content = if root.mode == "range" || root.mode == "inline" {
+       [
+         if root.start_content.string.length() > 0 {
+           root.start_content
+         },
+         if this.operand.text.length() > 0 {
+          {
+            "id": root.start_content.id + 1,
+            "startOffset": root.start_content.endOffset + 1,
+            "endOffset": root.start_content.endOffset + this.operand.text.length(),
+            "source": if this.operand.isFinal {this.operand.textSource} else {"INTERMEDIATE_TEXT"},
+            "string": this.operand.text,
+            "length_of_string": this.operand.text.length(),
+            "isItalic": if this.operand.isFinal {0} else {1}
+           }
+         },
+         if root.end_content.string.length() > 0 {
+           root.end_content
+         }
+       ]
+      } else if root.mode == "prepend" {
+       [
+        if this.operand.text.length() > 0 {
+          {
+            "id": 0,
+            "startOffset": 0,
+            "endOffset": this.operand.text.length() - 1,
+            "source": if this.operand.isFinal {this.operand.textSource} else {"INTERMEDIATE_TEXT"},
+            "string": this.operand.text,
+            "length_of_string": this.operand.text.length(),
+            "isItalic": if this.operand.isFinal {0} else {1}
+          }
+         }
+        ]
+      } else {
+        [
+         if this.operand.text.length() > 0 {
+          {
+            "id": root.prev_final.id + 1,
+            "startOffset": root.prev_final.endOffset + 1,
+            "endOffset": root.prev_final.endOffset + this.operand.text.length(),
+            "source": if this.operand.isFinal {this.operand.textSource} else {"INTERMEDIATE_TEXT"},
+            "string": this.operand.text,
+            "length_of_string": this.operand.text.length(),
+            "isItalic": if this.operand.isFinal {0} else {1}
+          }
+         }
+        ]
+      }
+
+  ## update offsets
+  - label: update_offsets
+    switch:
+      - check: this.operand.cursorInfo != null
+        processors:
+          - mutation: |
+              map updateOffsets {
+               root.id = this.value.id + this.idCorrection
+               root.startOffset = this.value.startOffset + this.offsetCorrection
+               root.endOffset = this.value.endOffset + this.offsetCorrection
+               root.string = this.value.string
+               root.lengthOfString = this.value.lengthOfString
+               root.source = this.value.source
+              }
+
+              let offsetCorrection = if root.mode == "prepend" {
+               # this is a bit tricky, we are prepending a new block, so all the offsets of the existing blocks need to be updated
+               # however, the first block had startOffset = 0 so and in prepend mode both cursors are at 0
+               # so we need to add the length of the new block to all the offsets of the existing blocks and not subtract 1 as we do in other cases
+               this.operand.text.length()
+              } else {
+               # (new characters added length - existing characters removed length) - 1 because offsets are zero based indexes and length is 1 based
+               (this.operand.text.length() - (this.operand.cursorInfo.cursorPositionEndIndex - this.operand.cursorInfo.cursorPositionIndex)) - 1
+              }
+
+              let idCorrection = if root.mode == "prepend" {
+               1 # simply add 1 to all blocks after first since first was prepended
+              } else if this.operand.cursorInfo.cursorPositionIndex == 0 {
+                # if the start of the cursor is zero, then we are replacing the first block with new block
+                # let's say the end cursor was in block 3 with id 2 (because id is zero based)
+                # then we removed three blocks (0, 1, 2) and added one block (0)
+                # thus, the formula becomes: 0 (start block) - 2 (end block) = -2
+                # thus, block 4 (id=3), will now become block 2 (id=1), block 5 will become block 3 and so on
+                # so we need to subtract the id of the end block from all the blocks after the end block
+
+                0 - root.end_content.id
+              } else {
+               0 # no correction needed
+              }
+
+              root.from_end_cursor = root.from_end_cursor.map_each(each -> { "value": each, "offsetCorrection": $offsetCorrection, "idCorrection": $idCorrection}.apply("updateOffsets"))
+
+  ## update the results
+  - label: update_results
+    mutation: |
+      let contentArr = if root.mode == "range" || root.mode == "inline" {
+       root.upto_start_cursor.concat(root.new_content, root.from_end_cursor) # inline replacement
+      } else if root.mode == "prepend" {
+       root.new_content.concat(root.from_end_cursor) # there is no root.upto_start_cursor in prepend mode
+      } else {
+       root.section_content.content.concat(root.new_content) # simple append
+      }
+
+      root.results = [
+        {
+         "@type": "type.googleapis.com/SectionContent",
+         "content": $contentArr
+        },
+        {
+            "@type": "type.googleapis.com/google.protobuf.Int32Value",
+            "value": root.cursor_position,
+        }
+       ]

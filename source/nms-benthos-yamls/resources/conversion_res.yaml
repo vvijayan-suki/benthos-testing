@@ -1,0 +1,10 @@
+processor_resources:
+- label: "populate_result"
+  bloblang: |-  
+    let content = {
+        "@type": "type.googleapis.com/Content",
+        "string": this.operand.text,
+        "isItalic": 1,
+        "source": this.operand.asr
+    }
+    root.results = [$content]
