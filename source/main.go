@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
@@ -61,6 +62,15 @@ func runDynamicLabData() {
 			panic(err)
 		}
 
+		abbreviationsPB, err := structpb.NewStruct(abbreviations)
+		if err != nil {
+			panic(err)
+		}
+		abbreviationsAnyPB, err := anypb.New(abbreviationsPB)
+		if err != nil {
+			panic(err)
+		}
+
 		request := &enginePB.Request{
 			Property: &note.Property{
 				PropertyType: &note.Property_LabResultType{
@@ -71,7 +81,7 @@ func runDynamicLabData() {
 			},
 			Version:  note.Version_V1,
 			Operand:  sectionS2AnyPB,
-			Contexts: []*anypb.Any{vitalsMappingAnyPB, reStringAnyPB},
+			Contexts: []*anypb.Any{vitalsMappingAnyPB, reStringAnyPB, abbreviationsAnyPB},
 		}
 
 		fmt.Println("request: ", request)
@@ -145,9 +155,9 @@ func getSectionS2() *composer.SectionS2 {
 				&sectioncontent.Content{
 					Id:               2,
 					StartOffset:      41,
-					EndOffset:        63,
-					String_:          "bp: __blood_pressure__ ",
-					LengthOfString:   23,
+					EndOffset:        51,
+					String_:          "bp: __bp__ ",
+					LengthOfString:   11,
 					IsBold:           0,
 					IsItalic:         0,
 					Source:           0,
@@ -160,7 +170,7 @@ func getSectionS2() *composer.SectionS2 {
 		Hash:                 "",
 		DiagnosisEntry:       nil,
 		PbcSectionFlag:       false,
-		PlainText:            "bp: __blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+		PlainText:            "bp: __blood_pressure__  hr: __heartrate__bp: __bp__ ",
 		CursorPosition:       0,
 		SectionIndex:         0,
 		SubsectionIndex:      0,
@@ -184,7 +194,7 @@ func getMapping() *dynamic_data.DynamicData {
 		},
 	}
 
-	vc.DynamicData.Mapping["bp"] = &dynamic_data.DynamicChartData{
+	vc.DynamicData.Mapping["blood_pressure"] = &dynamic_data.DynamicChartData{
 		Type:            0,
 		Content:         "120/80",
 		ResultedDate:    timestamppb.Now(),
