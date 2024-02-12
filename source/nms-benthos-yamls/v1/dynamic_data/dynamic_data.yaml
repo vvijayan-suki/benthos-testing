@@ -4,6 +4,7 @@ pipeline:
         - resource: validate_operand
         - resource: validate_contexts
         - resource: populate_prereqs
+        - resource: a
         - resource: splice_content_range
         - resource: create_content
         - resource: update_offsets
@@ -55,6 +56,10 @@ processor_resources:
         throw("re_string is required")
       }
       
+      abbreviation = if (! ($abbreviation.exists("@type") && $abbreviation."@type" == "type.googleapis.com/google.protobuf.Struct") ) {
+        throw("invalid abbreviation type")
+      }
+      
 #      # vital is the place_holder extracted from the re_string
 #      let vital = $re_string.value.trim("_")
 #
@@ -66,16 +71,38 @@ processor_resources:
 #        throw("vital not found")
 #      }
 
+  - label: a
+    log:
+      fields_mapping: |
+        root = this
+
   - label: populate_prereqs
     mutation: |
       let dynamic_data = this.contexts.index(0)
       let re_string = this.contexts.index(1)
+      let abbreviation = this.contexts.index(2)
+      
+      root.abbreviation = $abbreviation
+      root.dynamic_data = $dynamic_data
       
       let mapping = $dynamic_data.mapping
       root.re_string = $re_string.value
       
       let vital = root.re_string.trim("_")
-      let value = $mapping.get($vital)
+      let vital_key = if $abbreviation.value.exists($vital) {
+        $abbreviation.value.get($vital)
+      } else {
+        $vital
+      }
+      
+      root.vital = $vital_key
+      
+      root.exists = $abbreviation.value.exists($vital)
+      let value = $mapping.get($vital_key)
+      
+      root.exists2 = $mapping.exists($vital_key)
+      
+      root.value = $value
       
       root.datetime = ""
       root.datetime = if $value.shouldHaveDates {
