@@ -184,7 +184,7 @@ func getMapping() *dynamic_data.DynamicData {
 		},
 	}
 
-	vc.DynamicData.Mapping["blood_pressure"] = &dynamic_data.DynamicChartData{
+	vc.DynamicData.Mapping["bp"] = &dynamic_data.DynamicChartData{
 		Type:            0,
 		Content:         "120/80",
 		ResultedDate:    timestamppb.Now(),
