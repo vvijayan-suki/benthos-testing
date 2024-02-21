@@ -217,7 +217,7 @@ func getMapping() *dynamic_data.DynamicData {
 }
 
 var abbreviations = map[string]interface{}{
-	"bp":   "blood_pressure",
+	//"bp":   "blood_pressure",
 	"hr":   "heartrate",
 	"temp": "temperature",
 	"rr":   "respiratory_rate",
