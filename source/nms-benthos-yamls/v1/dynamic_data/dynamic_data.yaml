@@ -4,7 +4,6 @@ pipeline:
         - resource: validate_operand
         - resource: validate_contexts
         - resource: populate_prereqs
-        - resource: a
         - resource: splice_content_range
         - resource: create_content
         - resource: update_offsets
@@ -31,7 +30,7 @@ processor_resources:
       let contexts = if !this.exists("contexts") || this.contexts.length() == 0 {
       throw("At least one context is required")
       } else if this.contexts.length() > 3 {
-        throw("At most two contexts are allowed")
+        throw("At most three contexts are allowed")
       } else {
         this.contexts
       }
@@ -59,22 +58,6 @@ processor_resources:
       abbreviation = if (! ($abbreviation.exists("@type") && $abbreviation."@type" == "type.googleapis.com/google.protobuf.Struct") ) {
         throw("invalid abbreviation type")
       }
-      
-#      # vital is the place_holder extracted from the re_string
-#      let vital = $re_string.value.trim("_")
-#
-#      let mapping = $dynamic_data.mapping
-#
-#      # value is the object obtained from the mapping
-#      # if the vital is not found in the mapping, throw an error
-#      let value = if $mapping.get($vital) == null {
-#        throw("vital not found")
-#      }
-
-  - label: a
-    log:
-      fields_mapping: |
-        root = this
 
   - label: populate_prereqs
     mutation: |
@@ -82,27 +65,25 @@ processor_resources:
       let re_string = this.contexts.index(1)
       let abbreviation = this.contexts.index(2)
       
-      root.abbreviation = $abbreviation
-      root.dynamic_data = $dynamic_data
-      
       let mapping = $dynamic_data.mapping
       root.re_string = $re_string.value
       
       let vital = root.re_string.trim("_")
+      
       let vital_key = if $abbreviation.value.exists($vital) {
         $abbreviation.value.get($vital)
       } else {
         $vital
       }
       
-      root.vital = $vital_key
-      
-      root.exists = $abbreviation.value.exists($vital)
-      let value = $mapping.get($vital_key)
-      
-      root.exists2 = $mapping.exists($vital_key)
-      
-      root.value = $value
+      let value = if $mapping.exists($vital_key) {
+        $mapping.get($vital_key)
+      } else {
+        {
+          "content": "____",
+          "shouldHaveDates": false
+        }
+      }
       
       root.datetime = ""
       root.datetime = if $value.shouldHaveDates {
@@ -113,12 +94,8 @@ processor_resources:
           "(" + $value.effectiveDate.ts_format("01/02/06 15:04") + ")**"
         }
       }
-    
-      root.vital_content = if !$value.exists("content") || $value.error.length() > 0 || $value.content.length() == 0 {
-        "____"
-      } else {
-        $value.content + "  " + root.datetime
-      }
+      
+      root.vital_content = $value.content + "  " + root.datetime
 
   ## splice the content array based on the range of the re_string
   - label: splice_content_range
@@ -162,7 +139,7 @@ processor_resources:
           "id": root.start_content.id + 1,
           "startOffset": root.start_content.endOffset + 1,
           "endOffset": root.start_content.endOffset + root.vital_content.length(),
-          "source": "INTERMEDIATE_TEXT",
+          "source": "DYNAMIC_VITALS",
           "string": root.vital_content,
           "lengthOfString": root.vital_content.length(),
          },
@@ -199,7 +176,7 @@ processor_resources:
       root.section_s2.plainText = $string
       root.section_s2.contentS2.content = $contentArr
       
-
+      
       # Update the footer of a section
       root.footer = []
       
