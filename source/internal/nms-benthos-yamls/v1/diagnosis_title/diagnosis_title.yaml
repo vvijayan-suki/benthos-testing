@@ -1,0 +1,71 @@
+pipeline:
+  processors:
+    - try:
+        - resource: validate_operand
+        - resource: validate_contexts
+        - resource: populate_prereqs
+        - resource: add_diagnosis_name
+    - catch:
+        - mapping: |
+            root.results = []
+            root.error = error()
+
+processor_resources:
+  # -------------------------------- Validators -------------------------------- #
+  - label: validate_operand
+    mapping: |
+      if (! (this.exists("operand.@type") && (this.operand."@type" == "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent")) ) {
+        throw("invalid operand type")
+      } 
+      else if (! (this.exists("operand.text")) ) {
+        throw("operand.text must be present")
+      }
+      else if (! (this.exists("operand.textSource")) ) {
+        throw("operand.textSource must be present")
+      } 
+      else if (! (this.exists("operand.isFinal")) ) {
+        throw("operand.isFinal must be present")
+      }
+
+  - label: validate_contexts
+    mutation: |
+      if !this.exists("contexts") || this.contexts.length() < 2 {
+        throw("At least two contexts is required")
+      }else if (!this.contexts.index(0).exists("@type") || this.contexts.index(0)."@type" != "type.googleapis.com/learningmotors.pb.composer.SectionS2") {
+        throw("invalid context type")
+      }
+      else if (this.contexts.slice(1).any(v -> v."@type" != "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry")) {
+        throw("invalid contexts type")
+      }
+
+  # -------------------------------- Processors -------------------------------- #
+
+  ## Populate pre-requisites
+  - label: populate_prereqs
+    mutation: |
+      root.latest_problem_entry = this.contexts.index(0)
+      
+      root.problem_name = if root.latest_problem_entry.name == null || root.latest_problem_entry.name == "" {
+       this.operand.text.trim().capitalize()
+      } else {
+       root.latest_problem_entry.name + " " + this.operand.text
+      }
+
+      # find existing problems as indicated by subsectionIndex > 0, subsectionIndex == 0 is the normal section
+      root.existing_problems = this.contexts.slice(1).filter(v -> v.section.subsectionIndex > 0).or([])
+      
+      let duplicate = if root.existing_problems.length() > 0 && root.existing_problems.any(v -> (v.section.name == root.problem_name && v.section.id != root.latest_problem_entry.id)) {
+        throw("Duplicate problem")
+      }
+      
+  ## add diagnosis name
+  - label: add_diagnosis_name
+    mutation: |
+     # modify problem name
+
+     root.latest_problem_entry.name = root.problem_name
+
+     root.latest_problem_entry.cursorPositionName = root.latest_problem_entry.name.length() - 1
+     root.latest_problem_entry.opsStatusFlag = "NEEDS_OPS_PROCESSING"
+
+     root.results = [root.latest_problem_entry]

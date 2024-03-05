@@ -1,0 +1,203 @@
+pipeline:
+  processors:
+    - try:
+        - resource: validate_operand
+        - resource: validate_contexts
+        - resource: populate_prereqs
+        - resource: splice_content_range
+        - resource: create_content
+        - resource: update_offsets
+        - resource: update_results
+
+    - catch:
+        - mapping: |
+            root.results = []
+            root.error = error()
+
+processor_resources:
+  # -------------------------------- Validators -------------------------------- #
+  - label: validate_operand
+    mapping: |
+      if !this.exists("operand") {
+        throw("operand is required")
+      }
+      else if (! (this.exists("operand.@type") && (this.operand."@type" == "type.googleapis.com/learningmotors.pb.composer.SectionS2")) ) {
+        throw("invalid operand type")
+      }
+
+  - label: validate_contexts
+    mapping: |
+      let contexts = if !this.exists("contexts") || this.contexts.length() == 0 {
+      throw("At least one context is required")
+      } else if this.contexts.length() > 3 {
+        throw("At most three contexts are allowed")
+      } else {
+        this.contexts
+      }
+
+      let dynamic_data = contexts.index(0)
+      let re_string = contexts.index(1)
+      
+      ## abbreviations are extra mappings where the keys are short hand for some of the vitals
+      ## eg: wt -> weight
+      let abbreviation = contexts.index(2)
+
+      dynamic_data = if (! ($dynamic_data.exists("@type") && $dynamic_data."@type" == "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData") ) {
+        throw("invalid dynamic_data type")
+      }
+
+      let mapping = if (! ($dynamic_data.exists("mapping"))) {
+        throw("mappings is required")
+      }
+
+      # re_string is the string obtained after executing the regex done at the caller
+      # it is of the format __<place_holder>__
+      re_string = if (! ($re_string.exists("@type") && $re_string."@type" == "type.googleapis.com/google.protobuf.StringValue") ) {
+        throw("invalid re_string type")
+      } else if $re_string.value.length() == 0 {
+        throw("re_string is required")
+      }
+      
+      abbreviation = if (! ($abbreviation.exists("@type") && $abbreviation."@type" == "type.googleapis.com/google.protobuf.Struct") ) {
+        throw("invalid abbreviation type")
+      }
+
+  - label: populate_prereqs
+    mutation: |
+      let dynamic_data = this.contexts.index(0)
+      let re_string = this.contexts.index(1)
+      let abbreviation = this.contexts.index(2)
+      
+      let mapping = $dynamic_data.mapping
+      root.re_string = $re_string.value
+      
+      let vital = root.re_string.trim("_")
+      
+      let vital_key = if $abbreviation.value.exists($vital) {
+        $abbreviation.value.get($vital)
+      } else {
+        $vital
+      }
+      
+      ## if no dynamic vitals exist, replace with ____
+      let value = if $mapping.exists($vital_key) {
+        $mapping.get($vital_key)
+      } else {
+        {
+          "content": "____",
+          "shouldHaveDates": false
+        }
+      }
+      
+      root.datetime = ""
+      root.datetime = if $value.shouldHaveDates {
+        if $value.resultedDate != null {
+          # TODO: fix use of ")* " as a pattern string
+          "(" + $value.resultedDate.ts_format("01/02/06 15:04") + ")* "
+        } else if $value.effectiveDate != null {
+          "(" + $value.effectiveDate.ts_format("01/02/06 15:04") + ")**"
+        }
+      }
+    
+      root.vital_content = if root.datetime.length() > 0 {
+        $value.content + "  " + root.datetime
+      } else {
+        $value.content
+      }
+
+  ## splice the content array based on the range of the re_string
+  - label: splice_content_range
+    mutation: |
+      root.start_index = this.operand.plainText.index_of(root.re_string) - 1
+      root.end_index = root.start_index + root.re_string.length()
+
+      let content_start_index = this.operand.contentS2.content.find_by(v -> root.start_index >= v.startOffset && root.start_index <= v.endOffset)
+      let content_end_index = this.operand.contentS2.content.find_by(v -> root.end_index >= v.startOffset && root.end_index <= v.endOffset)
+
+      root.upto_start_cursor = this.operand.contentS2.content.slice(0, $content_start_index)
+      root.from_end_cursor = this.operand.contentS2.content.slice($content_end_index+1, this.operand.contentS2.content.length()+1)
+
+      root.start_content = this.operand.contentS2.content.index($content_start_index)
+      root.end_content = this.operand.contentS2.content.index($content_end_index)
+
+      root.start_content.string = root.start_content.string.slice(0, root.start_index - root.start_content.startOffset + 1)
+      root.end_content.string = root.end_content.string.slice(root.end_index - root.end_content.startOffset + 1, root.end_content.string.length()+1)
+
+      root.start_content.lengthOfString = root.start_content.string.length()
+      root.end_content.lengthOfString = root.end_content.string.length()
+
+      root.start_content.endOffset = root.start_index
+
+      root.end_content.startOffset = root.start_index + root.vital_content.length() + 1
+      root.end_content.endOffset = root.end_content.startOffset + root.end_content.string.length() - 1
+
+      root.end_content.id = root.start_content.id + 2
+
+
+  ## create the new content block
+  ## Replace content between the start & end index of the regex
+  ## this may contain multiple content blocks so we need to split the content into two parts and insert the new content in between
+  - label: create_content
+    mutation: |
+      root.new_content = [
+      if root.start_content.string.length() > 0 {
+         root.start_content
+       },
+      {
+          "id": root.start_content.id + 1,
+          "startOffset": root.start_content.endOffset + 1,
+          "endOffset": root.start_content.endOffset + root.vital_content.length(),
+          "source": "DYNAMIC_VITALS",
+          "string": root.vital_content,
+          "lengthOfString": root.vital_content.length(),
+         },
+      if root.end_content.string.length() > 0 {
+           root.end_content
+      }
+      ]
+
+  - label: update_offsets
+    mutation: |
+      map updateOffsets {
+       root.id = this.value.id + this.idCorrection
+       root.startOffset = this.value.startOffset + this.offsetCorrection
+       root.endOffset = this.value.endOffset + this.offsetCorrection
+       root.string = this.value.string
+       root.lengthOfString = this.value.lengthOfString
+       root.source = this.value.source
+      }
+      
+      let offsetCorrection = (root.vital_content.length() - (root.end_index - root.start_index))
+      let idCorrection = root.upto_start_cursor.length() + root.new_content.length() + root.from_end_cursor.length() - this.operand.contentS2.content.length()
+      
+      root.from_end_cursor = root.from_end_cursor.map_each(each -> { "value": each, "offsetCorrection": $offsetCorrection, "idCorrection": $idCorrection}.apply("updateOffsets"))
+
+  - label: update_results
+    mutation: |
+      let contentArr = root.upto_start_cursor.concat(root.new_content, root.from_end_cursor)
+      
+      # join the content array string to get the plain text
+      let string = $contentArr.map_each(each -> each.string).join("")
+      
+      root.section_s2 = this.operand
+      
+      root.section_s2.plainText = $string
+      root.section_s2.contentS2.content = $contentArr
+      
+
+      # Update the footer of a section
+      root.footer = []
+      
+      # if the plaintext contains ")*" then append "*date/time resulted" to the footer
+      root.footer = if $string.contains(")* ") {
+        root.footer.append("*date/time resulted")
+      }
+      
+      # if the plaintext contains ")**" then append "*date/time collected" to the footer
+      root.footer = if $string.contains(")**") {
+        root.footer.append("**date/time collected")
+      }
+      
+      root.section_s2.footer.content = root.footer.join("\n")
+      
+      root.results = [root.section_s2]

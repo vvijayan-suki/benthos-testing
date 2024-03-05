@@ -1,0 +1,92 @@
+pipeline:
+  processors:
+    - try:
+        - resource: validate_operand
+        - resource: validate_contexts
+        - resource: populate_prereqs
+        - resource: create_diagnosis
+    - catch:
+        - mapping: |
+            root.results = []
+            root.error = error()
+
+processor_resources:
+  # -------------------------------- Validators -------------------------------- #
+  - label: validate_operand
+    mapping: |
+      if (!this.exists("operand.@type") || (this.operand."@type" != "type.googleapis.com/google.protobuf.StringValue") || (!this.exists("operand.value"))) {
+        throw("invalid operand")
+      }
+
+  - label: validate_contexts
+    mapping: |
+      if (!this.exists("contexts") || this.contexts.length() < 2) {
+        throw("At least two contexts are required")
+      } else if (this.contexts.index(0)."@type"!="type.googleapis.com/google.protobuf.StringValue") {
+        throw("sub-section id context is required")
+      } else if (this.contexts.slice(1).any(v -> v."@type" != "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry")) {
+        throw("Invalid context type")
+      } 
+
+  # -------------------------------- Processors -------------------------------- #
+
+  ## Populate pre-requisites
+  - label: populate_prereqs
+    mutation: |
+      root.pbc_section = if this.exists("contexts") {
+        this.contexts.slice(1).filter(v -> v.section.pbcSectionFlag)
+      }
+
+      let atleast_one_pbc = if root.pbc_section.length() == 0 {
+        throw("At least one pbcSection is required")
+      }
+
+      # find existing problems as indicated by subsectionIndex > 0, subsectionIndex == 0 is the normal section
+      root.existing_problems = this.contexts.slice(1).filter(v -> v.section.subsectionIndex > 0).or([])
+
+      root.problem_name = this.operand.value.trim().capitalize()
+      
+      let duplicate = if root.existing_problems.length() > 0 && root.existing_problems.any(v -> v.section.name == root.problem_name) {
+        throw("Duplicate problem")
+      }
+  
+      root.id = if this.contexts.index(0).value.length() > 0 {
+        this.contexts.index(0).value
+      } else {
+        uuid_v4()
+      }
+
+  ## Create diagnosis
+  - label: create_diagnosis
+    mutation: |
+      let diagnosis = {
+       "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+       "name": root.problem_name,
+       "id": root.id,
+       "subsectionIndex": root.existing_problems.length() + 1,
+       "sectionIndex": root.pbc_section.index(0).section.sectionIndex,
+       "cursorPosition": 0,
+       "cursorPositionName": this.operand.value.length(),
+       "pbcSectionFlag": false,
+       "opsStatusFlag": "NEEDS_OPS_PROCESSING",
+       "contentS2": {
+            "content": []
+       },
+       "diagnosisEntry": {
+          "diagnosis": {
+            "icdCode": "",
+            "icdDescription": "",
+            "snomedCode": "",
+            "snomedDescription": "",
+            "hccCode": "",
+            "panelRanking": 0,
+            "billable": false,
+            "problemLabel": "",
+            "suggestionType": "DEFAULT"
+          },
+          "detailedDisplay": null,
+          "confirmStatus": "UNKNOWN"
+        }
+      }
+
+      root.results = [$diagnosis]

@@ -1,0 +1,86 @@
+pipeline:
+  processors:
+    - try:
+        - resource: validate_operand
+        - resource: validate_contexts
+        - resource: populate_prereqs
+        - resource: fill_subsection_details
+    - catch:
+        - mapping: |
+            root.results = []
+            root.error = error()
+
+processor_resources:
+  # -------------------------------- Validators -------------------------------- #
+  - label: validate_operand
+    mapping: |
+      if (!this.exists("operand.@type") || (this.operand."@type" != "type.googleapis.com/learningmotors.pb.composer.SectionS2Entries")) {
+        throw("invalid operand")
+      } else if (this.operand.entries.length() == 0) {
+        throw("At least one pbc subsection to be added is required")
+      }
+
+  - label: validate_contexts
+    mapping: |
+      if (!this.exists("contexts")) {
+        throw("At least one context is required")
+      } else if (this.contexts.any(entry -> entry."@type" != "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry")) {
+        throw("Invalid type for composition section entry")
+      }
+
+  # -------------------------------- Processors -------------------------------- #
+
+  ## Populate pre-requisites
+  - label: populate_prereqs
+    mutation: |
+      root.pbcSection = if this.contexts.length() > 0 {
+        this.contexts.filter(v -> v.section.pbcSectionFlag)
+      }
+
+      let atleastOnePbc = if root.pbcSection.length() == 0 {
+        throw("At least one pbcSection is required")
+      }
+
+      # find existing problems as indicated by subsectionIndex > 0, subsectionIndex == 0 is the normal section
+      root.existingProblems = this.contexts.filter(v -> v.section.subsectionIndex > 0).or([])
+
+      # not checking for duplicates, this is in parity with s2
+  
+  ## Add details for each pbc subsection
+  - label: fill_subsection_details
+    branch:
+      request_map: |
+        root.newProblems = this.operand.entries
+        root.pbcSectionSectionIndex = this.pbcSection.index(0).section.sectionIndex
+        root.existingProblemsCount = this.existingProblems.length()
+      processors:
+        - label: mutate
+          mutation: |
+            map newPbcSubSection {
+              root."@type" = "type.googleapis.com/learningmotors.pb.composer.SectionS2"
+              root.name = this.section.name
+              root.id = this.section.id
+              root.subsectionIndex = this.section.subsectionIndex + this.existingProblemsCount
+              root.sectionIndex = this.pbcSectionSectionIndex
+              root.cursorPosition = this.section.contentS2.totalStringLength
+              root.cursorPositionName = this.section.name.length()
+              root.pbcSectionFlag = false
+              root.opsStatusFlag = this.section.opsStatusFlag
+              root.contentS2 = this.section.contentS2
+              root.editLocation = 0
+              root.diagnosisEntry = this.section.diagnosisEntry
+              root.plainText = this.section.plainText
+              root.status = this.section.status
+            }
+
+            let pbcSectionSectionIndex = root.pbcSectionSectionIndex
+            let existingProblemsCount = root.existingProblemsCount
+
+            root.results = this.newProblems.map_each(p -> {
+              "section": p.section, 
+              "pbcSectionSectionIndex": $pbcSectionSectionIndex,
+              "existingProblemsCount": $existingProblemsCount
+            }.apply("newPbcSubSection"))
+      result_map: |
+        root = {}
+        root.results = this.results

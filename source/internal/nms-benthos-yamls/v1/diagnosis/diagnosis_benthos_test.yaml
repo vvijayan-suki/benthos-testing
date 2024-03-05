@@ -1,0 +1,254 @@
+tests:
+  - name: Validation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            value: "Asthma"
+      - json_content:
+          operand: { "@type": "random-type", value: "Asthma" }
+      - json_content:
+          operand:
+            { "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent" }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+            }
+    output_batches:
+      - - bloblang: this.error.contains("invalid operand")
+        - bloblang: this.error.contains("invalid operand")
+        - bloblang: this.error.contains("invalid operand")
+        - bloblang: this.error.contains("invalid operand")
+
+  - name: ContextValidation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "Asthma"
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "Asthma"
+            }
+          contexts:
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry" }
+            - { "@type": "type.googleapis.com/google.protobuf.StringValue" }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "Asthma"
+            }
+          contexts:
+            - { "@type": "type.googleapis.com/google.protobuf.StringValue" }
+            - { "@type": "type.googleapis.com/google.protobuf.StringValue" }      
+    output_batches:
+      - - bloblang: this.error.contains("At least two contexts are required")
+        - bloblang: this.error.contains("section id context is required")
+        - bloblang: this.error.contains("Invalid context type")
+
+  - name: PrereqCheck
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "Asthma"
+            }
+          contexts:
+            - { 
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                value: "",
+              }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry" }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry" }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "asthma"
+            }
+          contexts:
+            - { 
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                value: "",
+              }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "pbcSectionFlag": true, "subsectionIndex": 0 } }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "name": "Asthma", "subsectionIndex": 1 } }
+
+      # add empty problem to pbc section containing an empty problem
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: ""
+            }
+          contexts:
+            - {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "",
+            }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "pbcSectionFlag": true, "subsectionIndex": 0 } }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "name": "", "subsectionIndex": 1 } }
+
+      # add problem having name with space to pbc section containing the same problem
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: " asthma"
+            }
+          contexts:
+            - {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "",
+            }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "pbcSectionFlag": true, "subsectionIndex": 0 } }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "name": "Asthma", "subsectionIndex": 1 } }
+    output_batches:
+      - - bloblang: this.error.contains("At least one pbcSection is required")
+        - bloblang: this.error.contains("Duplicate problem")
+        - bloblang: this.error.contains("Duplicate problem")
+        - bloblang: this.error.contains("Duplicate problem")
+
+  - name: CreateDiagnosis
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "asthma"
+            }
+          contexts:
+            - { 
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                value: "",
+              }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "pbcSectionFlag": true, "subsectionIndex": 0, "sectionIndex": 0 } }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "covid 19"
+            }
+          contexts:
+            - { 
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                value: "",
+              }          
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "pbcSectionFlag": true, "subsectionIndex": 0, "sectionIndex": 0 } }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "name": "Asthma", "subsectionIndex": 1 } }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/google.protobuf.StringValue",
+              value: "malaria"
+            }
+          contexts:
+            - { 
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                value: "test-uuid",
+              }          
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "pbcSectionFlag": true, "subsectionIndex": 0, "sectionIndex": 0 } }
+            - { "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2Entry", "section": { "name": "Asthma", "subsectionIndex": 1 } }
+    output_batches:
+      - - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                  "cursorPosition": 0,
+                  "cursorPositionName": 6,
+                  "name": "Asthma",
+                  "pbcSectionFlag": false,
+                  "sectionIndex": 0,
+                  "subsectionIndex": 1,
+                  "opsStatusFlag": "NEEDS_OPS_PROCESSING",
+                  "diagnosisEntry": {
+                    "diagnosis": {
+                        "icdCode": "",
+                        "icdDescription": "",
+                        "snomedCode": "",
+                        "snomedDescription": "",
+                        "hccCode": "",
+                        "panelRanking": 0,
+                        "billable": false,
+                        "problemLabel": "",
+                        "suggestionType": "DEFAULT"
+                    },
+                    "detailedDisplay": null,
+                    "confirmStatus": "UNKNOWN"
+                  }
+                },
+              ]
+        - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                  "cursorPosition": 0,
+                  "cursorPositionName": 8,
+                  "name": "Covid 19",
+                  "pbcSectionFlag": false,
+                  "sectionIndex": 0,
+                  "subsectionIndex": 2,
+                  "opsStatusFlag": "NEEDS_OPS_PROCESSING",
+                  "diagnosisEntry": {
+                    "diagnosis": {
+                        "icdCode": "",
+                        "icdDescription": "",
+                        "snomedCode": "",
+                        "snomedDescription": "",
+                        "hccCode": "",
+                        "panelRanking": 0,
+                        "billable": false,
+                        "problemLabel": "",
+                        "suggestionType": "DEFAULT"
+                    },
+                    "detailedDisplay": null,
+                    "confirmStatus": "UNKNOWN"
+                  }
+                },
+              ]
+        - json_contains:
+              results:
+                [
+                  {
+                    "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                    "id":"test-uuid",
+                    "cursorPosition": 0,
+                    "cursorPositionName": 7,
+                    "name": "Malaria",
+                    "pbcSectionFlag": false,
+                    "sectionIndex": 0,
+                    "subsectionIndex": 2,
+                    "opsStatusFlag": "NEEDS_OPS_PROCESSING",
+                    "diagnosisEntry": {
+                      "diagnosis": {
+                          "icdCode": "",
+                          "icdDescription": "",
+                          "snomedCode": "",
+                          "snomedDescription": "",
+                          "hccCode": "",
+                          "panelRanking": 0,
+                          "billable": false,
+                          "problemLabel": "",
+                          "suggestionType": "DEFAULT"
+                      },
+                      "detailedDisplay": null,
+                      "confirmStatus": "UNKNOWN"
+                    }
+                  },
+                ]

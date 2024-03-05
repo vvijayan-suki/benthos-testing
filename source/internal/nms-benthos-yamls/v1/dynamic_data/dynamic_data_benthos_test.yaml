@@ -1,0 +1,537 @@
+tests:
+  - name: OperandValidation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          context:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData",
+              "text": "",
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/suki.pb.nms.note.VoiceToTextEvent",
+            }
+
+    output_batches:
+      - - bloblang: this.error.contains("operand is required")
+        - bloblang: this.error.contains("invalid operand type")
+
+  - name: ContextValidation
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+            }
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+            }
+          contexts:
+            [
+              {
+              "@type": "type.googleapis.com/incorrect-type",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              },
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              }
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              }
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData",
+                mapping: { },
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              }
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData",
+                mapping: { },
+              },
+              {
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                value: "",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              }
+            ]
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData",
+                "mapping": { },
+              },
+              {
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                "value": "__blood_pressure__",
+              },
+              {
+                "@type": "type.googleapis.com/incorrect-type",
+              }
+            ]
+
+    output_batches:
+      - - bloblang: this.error.contains("At least one context is required")
+        - bloblang: this.error.contains("At most three contexts are allowed")
+        - bloblang: this.error.contains("invalid dynamic_data type")
+        - bloblang: this.error.contains("mappings is required")
+        - bloblang: this.error.contains("invalid re_string type")
+        - bloblang: this.error.contains("re_string is required")
+        - bloblang: this.error.contains("invalid abbreviation type")
+
+  - name: Processing
+    target_processors: "/pipeline/processors"
+    environment: {}
+    input_batch:
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              totalStringLength: 64,
+              contentS2: {
+                content:
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 23,
+                      string: "bp: __blood_pressure__  ",
+                      lengthOfString: 24,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 1,
+                      startOffset: 24,
+                      endOffset: 40,
+                      string: "hr: __heartrate__",
+                      lengthOfString: 17,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 2,
+                      startOffset: 41,
+                      endOffset: 63,
+                      string: "bp: __blood_pressure__ ",
+                      lengthOfString: 23,
+                      source: "NVOQ_ASR",
+                    }
+                  ],
+              },
+              "plainText": "bp: __blood_pressure__  hr: __heartrate__bp: __blood_pressure__ ",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData",
+                mapping: {
+                  "blood_pressure": {
+                    content: "120/80",
+                    resultedDate: 2023-12-04T04:36:12.342632Z,
+                    shouldHaveDates: true,
+                  },
+                  "heartrate": {
+                    content: "80",
+                    effectiveDate: 2023-12-04T04:36:12.342633Z,
+                    shouldHaveDates: true,
+                  },
+                  "respiratory_rate": {
+                    content: "16",
+                  },
+                },
+              },
+              {
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                value: "__blood_pressure__",
+              },
+              {
+                "@type": "type.googleapis.com/google.protobuf.Struct",
+                "value": {
+                  "bp": "blood_pressure",
+                  "hr": "heartrate",
+                  "wt": "weight",
+                },
+              }
+            ]
+
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              totalStringLength: 64,
+              contentS2: {
+                content:
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 23,
+                      string: "bp: __blood_pressure__  ",
+                      lengthOfString: 24,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 1,
+                      startOffset: 24,
+                      endOffset: 40,
+                      string: "hr: __heartrate__",
+                      lengthOfString: 17,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 2,
+                      startOffset: 41,
+                      endOffset: 51,
+                      string: "bp: __bp__ ",
+                      lengthOfString: 11,
+                      source: "NVOQ_ASR",
+                    }
+                  ],
+              },
+              "plainText": "bp: __blood_pressure__  hr: __heartrate__bp: __bp__ ",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData",
+                mapping: {
+                  "blood_pressure": {
+                    content: "120/80",
+                    resultedDate: 2023-12-04T04:36:12.342632Z,
+                    shouldHaveDates: true,
+                  },
+                  "heartrate": {
+                    content: "80",
+                    effectiveDate: 2023-12-04T04:36:12.342633Z,
+                    shouldHaveDates: true,
+                  },
+                  "respiratory_rate": {
+                    content: "16",
+                  },
+                },
+              },
+              {
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                value: "__bp__",
+              },
+              {
+                "@type": "type.googleapis.com/google.protobuf.Struct",
+                "value": {
+                  "bp": "blood_pressure",
+                  "hr": "heartrate",
+                  "wt": "weight",
+                },
+              }
+            ]
+
+      - json_content:
+          operand:
+            {
+              "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+              totalStringLength: 64,
+              contentS2: {
+                content:
+                  [
+                    {
+                      id: 0,
+                      startOffset: 0,
+                      endOffset: 23,
+                      string: "bp: __blood_pressure__  ",
+                      lengthOfString: 24,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 1,
+                      startOffset: 24,
+                      endOffset: 40,
+                      string: "hr: __heartrate__",
+                      lengthOfString: 17,
+                      source: "NVOQ_ASR",
+                    },
+                    {
+                      id: 2,
+                      startOffset: 41,
+                      endOffset: 51,
+                      string: "bp: __bp__ ",
+                      lengthOfString: 11,
+                      source: "NVOQ_ASR",
+                    }
+                  ],
+              },
+              "plainText": "bp: __blood_pressure__  hr: __heartrate__bp: __bp__ ",
+            }
+          contexts:
+            [
+              {
+                "@type": "type.googleapis.com/suki.pb.nms.dynamic_data.DynamicData",
+                mapping: {
+                  "blood_pressure": {
+                    content: "120/80",
+                    resultedDate: 2023-12-04T04:36:12.342632Z,
+                    shouldHaveDates: true,
+                  },
+                  "heartrate": {
+                    content: "80",
+                    effectiveDate: 2023-12-04T04:36:12.342633Z,
+                    shouldHaveDates: true,
+                  },
+                  "respiratory_rate": {
+                    content: "16",
+                  },
+                },
+              },
+              {
+                "@type": "type.googleapis.com/google.protobuf.StringValue",
+                value: "__bp__",
+              },
+              {
+                "@type": "type.googleapis.com/google.protobuf.Struct",
+                "value": {
+                  "hr": "heartrate",
+                  "wt": "weight",
+                },
+              }
+            ]
+
+    output_batches:
+       - - json_contains:
+            results:
+              [
+                {
+                  "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                  contentS2: {
+                    content:
+                      [
+                        {
+                          id: 0,
+                          startOffset: 0,
+                          endOffset: 3,
+                          string: "bp: ",
+                          lengthOfString: 4,
+                          source: "NVOQ_ASR"
+                        },
+                        {
+                          id: 1,
+                          startOffset: 4,
+                          endOffset: 29,
+                          string: "120/80  (12/04/23 04:36)* ",
+                          lengthOfString: 26,
+                          source: "DYNAMIC_VITALS",
+                        },
+                        {
+                          id: 2,
+                          startOffset: 30,
+                          endOffset: 31,
+                          string: "  ",
+                          lengthOfString: 2,
+                          source: "NVOQ_ASR",
+                        },
+                        {
+                          id: 3,
+                          startOffset: 32,
+                          endOffset: 48,
+                          string: "hr: __heartrate__",
+                          lengthOfString: 17,
+                          source: "NVOQ_ASR",
+                        },
+                        {
+                          id: 4,
+                          startOffset: 49,
+                          endOffset: 71,
+                          string: "bp: __blood_pressure__ ",
+                          lengthOfString: 23,
+                          source: "NVOQ_ASR",
+                        }
+                      ],
+                  },
+                  "totalStringLength": 64,
+                  plainText: "bp: 120/80  (12/04/23 04:36)*   hr: __heartrate__bp: __blood_pressure__ ",
+                  "footer": {
+                    "content": "*date/time resulted"
+                  },
+                }
+              ]
+
+         - json_contains:
+             results:
+               [
+                 {
+                   "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                   contentS2: {
+                     content:
+                       [
+                         {
+                           id: 0,
+                           startOffset: 0,
+                           endOffset: 23,
+                           string: "bp: __blood_pressure__  ",
+                           lengthOfString: 24,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 1,
+                           startOffset: 24,
+                           endOffset: 40,
+                           string: "hr: __heartrate__",
+                           lengthOfString: 17,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 2,
+                           startOffset: 41,
+                           endOffset: 44,
+                           string: "bp: ",
+                           lengthOfString: 4,
+                           source: "NVOQ_ASR"
+                         },
+                         {
+                           id: 3,
+                           startOffset: 45,
+                           endOffset: 70,
+                           string: "120/80  (12/04/23 04:36)* ",
+                           lengthOfString: 26,
+                           source: "DYNAMIC_VITALS",
+                         },
+                         {
+                           id: 4,
+                           startOffset: 71,
+                           endOffset: 71,
+                           string: " ",
+                           lengthOfString: 1,
+                           source: "NVOQ_ASR",
+                         }
+                       ],
+                   },
+                   "totalStringLength": 64,
+                   plainText: "bp: __blood_pressure__  hr: __heartrate__bp: 120/80  (12/04/23 04:36)*  ",
+                   "footer": {
+                     "content": "*date/time resulted"
+                   },
+                 }
+               ]
+
+         - json_contains:
+             results:
+               [
+                 {
+                   "@type": "type.googleapis.com/learningmotors.pb.composer.SectionS2",
+                   contentS2: {
+                     content:
+                       [
+                         {
+                           id: 0,
+                           startOffset: 0,
+                           endOffset: 23,
+                           string: "bp: __blood_pressure__  ",
+                           lengthOfString: 24,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 1,
+                           startOffset: 24,
+                           endOffset: 40,
+                           string: "hr: __heartrate__",
+                           lengthOfString: 17,
+                           source: "NVOQ_ASR",
+                         },
+                         {
+                           id: 2,
+                           startOffset: 41,
+                           endOffset: 44,
+                           string: "bp: ",
+                           lengthOfString: 4,
+                           source: "NVOQ_ASR"
+                         },
+                         {
+                           id: 3,
+                           startOffset: 45,
+                           endOffset: 48,
+                           string: "____",
+                           lengthOfString: 4,
+                           source: "DYNAMIC_VITALS",
+                         },
+                         {
+                           id: 4,
+                           startOffset: 49,
+                           endOffset: 49,
+                           string: " ",
+                           lengthOfString: 1,
+                           source: "NVOQ_ASR",
+                         }
+                       ],
+                   },
+                   "totalStringLength": 64,
+                   plainText: "bp: __blood_pressure__  hr: __heartrate__bp: ____ ",
+                   "footer": {
+                     "content": ""
+                   },
+                 }
+               ]
